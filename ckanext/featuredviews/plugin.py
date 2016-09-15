@@ -49,26 +49,32 @@ def _get_featured_view(resource_view_id):
     return featured
 
 def _get_canonical_view(package_id):
-    canonical = db.Featured.find(package_id=package_id, canonical=True).first()
+    canonical_view_ids = [
+        view.resource_view_id for view in db.Featured.find(package_id=package_id, canonical=True).all()
+    ]
 
-    if not canonical:
+    if not canonical_view_ids:
+        return None
+
+    resource_views = model.Session.query(model.ResourceView).filter(
+        model.ResourceView.id.in_(canonical_view_ids)
+    ).all()
+
+    if resource_views is None:
         return None
     
-    resource_view = model.ResourceView.get(canonical.resource_view_id)
-    if resource_view is None:
-        return None
-    
-    resource_view_dictized = md.resource_view_dictize(
-        resource_view, 
-        {'model': model}
-    )
-    
-    resource = md.resource_dictize(
-        model.Resource.get(resource_view_dictized['resource_id']), 
-        {'model': model}
-    )
+    for view in resource_views:
+        resource_view = md.resource_view_dictize(view, {'model': model})
+        resource_obj = model.Resource.get(resource_view['resource_id'])
 
-    return {'resource': resource, 'resource_view': resource_view_dictized}
+        if resource_obj.state == 'deleted':
+            continue
+
+        resource = md.resource_dictize(resource_obj, {'model': model})
+
+        return {'resource': resource, 'resource_view': resource_view}
+
+    return None
 
 def _get_homepage_views():
     homepage_view_ids = [
